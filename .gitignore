@@ -19,3 +19,23 @@ traces/
 *.aab
 launcher/hs_err_pid*.log
 launcher/replay_pid*.log
+
+# Personal configuration and temporary files
+/archiv/
+/.env
+/.env.*
+!/.env.example
+/README.txt
+/buttons/tv-buttons.conf
+/themes/google-streamer-wohnzimmer/
+*.java.bak
+*.java.autostart-backup
+*.key
+*.pem
+*.log
+*.keystore
+*.jks
+**/local.properties
+
+# Local safety copies
+/.local-backup/

@@ -9,6 +9,10 @@ import android.os.Bundle;
 import android.provider.Settings;
 import android.view.View;
 import android.widget.LinearLayout;
+import android.widget.EditText;
+import android.view.ViewGroup;
+import android.view.View;
+import android.net.Uri;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -24,6 +28,9 @@ public final class LauncherSettingsActivity extends Activity {
     private static final int[] DOCK_OPACITIES = {100, 70, 50, 30};
     private final TextView[] dockChoices = new TextView[DOCK_OPACITIES.length];
     private TextView wallpaperChoice;
+    private TextView liveUrlChoice;
+    private TextView liveIntervalChoice;
+    private TextView liveFadeChoice;
     private TextView animationsChoice;
     private TextView advancedChoice;
     private TextView followThemeChoice;
@@ -94,6 +101,8 @@ public final class LauncherSettingsActivity extends Activity {
             reverseRow(rowChoices);
             reverseRow(dockChoices);
         }
+        addLiveWallpaperSettings();
+        addRemoteButtonSettings();
         wallpaperChoice = findViewById(R.id.wallpaperChoice);
         wallpaperChoice.setOnClickListener(v -> showWallpaperPicker());
         animationsChoice = findViewById(R.id.animationsChoice);
@@ -123,7 +132,9 @@ public final class LauncherSettingsActivity extends Activity {
             if (!hasOnTvChoices()) return;
             choices.edit().remove("columns").remove(Config.ROWS_BELOW_DOCK_KEY).remove("animations")
                     .remove("advanced_effects").remove(Config.WALLPAPER_CHOICE_KEY)
-                    .remove(Config.DOCK_OPACITY_KEY).commit();
+                    .remove(Config.DOCK_OPACITY_KEY).remove("live_wallpaper_url").remove("live_wallpaper_interval")
+                    .remove("live_wallpaper_interval_seconds")
+                    .remove("live_wallpaper_disabled").remove("wallpaper_fade_seconds").commit();
             Config current = Config.load(this);
             columns = current.columns;
             rowsBelowDock = current.rowsBelowDock;
@@ -142,6 +153,179 @@ public final class LauncherSettingsActivity extends Activity {
         refresh();
         if (config.launcherSettingsButton) reorderChoice.requestFocus();
         else columnChoices[Math.max(0, Math.min(columns - 4, 3))].requestFocus();
+    }
+
+    private void addLiveWallpaperSettings() {
+        View anchor = findViewById(R.id.wallpaperChoice);
+        LinearLayout host = (LinearLayout) anchor.getParent();
+        int insert = host.indexOfChild(anchor);
+
+        // Reuse the launcher settings selector, including its DPAD focus highlight.
+        liveUrlChoice = settingsRow();
+        liveUrlChoice.setOnClickListener(v -> editLiveUrl());
+        host.addView(liveUrlChoice, insert++);
+
+        liveIntervalChoice = settingsRow();
+        liveIntervalChoice.setOnClickListener(v -> selectLiveInterval());
+        host.addView(liveIntervalChoice, insert++);
+
+        liveFadeChoice = settingsRow();
+        liveFadeChoice.setOnClickListener(v -> selectFadeDuration());
+        host.addView(liveFadeChoice, insert++);
+
+        TextView backgroundMode = settingsRow();
+        backgroundMode.setText("Hintergrund anzeigen / ausschalten");
+        backgroundMode.setOnClickListener(v -> selectBackgroundMode());
+        host.addView(backgroundMode, insert);
+    }
+
+    private void addRemoteButtonSettings() {
+        View anchor = findViewById(R.id.tvSettingsChoice);
+        LinearLayout host = (LinearLayout) anchor.getParent();
+        int insert = host.indexOfChild(anchor);
+        TextView heading = new TextView(this);
+        heading.setText("Fernbedienungstasten");
+        heading.setTextColor(0xffffffff);
+        heading.setTextSize(20);
+        LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hp.topMargin = dp(28);
+        heading.setLayoutParams(hp);
+        host.addView(heading, insert++);
+        // Visual order: YouTube, Netflix, Star. Keep persisted key indices unchanged.
+        for (int keyIndex : new int[]{0, 2, 1}) {
+            final int index = keyIndex;
+            TextView row = settingsRow();
+            row.setText(remoteButtonLabel(index));
+            row.setOnClickListener(v -> RemoteButtonSettings.pick(this, index,
+                    () -> row.setText(remoteButtonLabel(index))));
+            host.addView(row, insert++);
+        }
+    }
+
+    private String remoteButtonLabel(int index) {
+        return new String[]{"YouTube", "Stern", "Netflix"}[index] + ": "
+                + RemoteButtonSettings.summary(this, index);
+    }
+
+    private TextView settingsRow() {
+        // The original SettingsRow style includes spacing, focus and pressed states.
+        TextView row = new TextView(this, null, 0, R.style.SettingsRow);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(52));
+        params.topMargin = dp(12);
+        row.setLayoutParams(params);
+        return row;
+    }
+
+    private int dp(int value) {
+        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private void selectBackgroundMode() {
+        String[] options = {"Live-Hintergrund (URL)", "Statisches Ersatzbild", "Kein Hintergrund"};
+        new AlertDialog.Builder(this)
+                .setTitle("Hintergrund")
+                .setItems(options, (dialog, selected) -> {
+                    SharedPreferences.Editor edit = choices.edit();
+                    if (selected == 0) {
+                        edit.remove(Config.WALLPAPER_CHOICE_KEY);
+                        edit.remove("live_wallpaper_disabled");
+                    } else if (selected == 1) {
+                        edit.remove(Config.WALLPAPER_CHOICE_KEY);
+                        edit.putBoolean("live_wallpaper_disabled", true);
+                    } else {
+                        edit.putString(Config.WALLPAPER_CHOICE_KEY, "none");
+                        edit.putBoolean("live_wallpaper_disabled", true);
+                    }
+                    edit.apply();
+                    setResult(RESULT_OK);
+                    refresh();
+                })
+                .show();
+    }
+
+    private void editLiveUrl() {
+        EditText field = new EditText(this);
+        field.setSingleLine(true);
+        field.setText(Config.load(this).liveWallpaperUrl);
+        field.setSelectAllOnFocus(true);
+        new AlertDialog.Builder(this)
+                .setTitle("Hintergrund-URL")
+                .setMessage("Direkte HTTP(S)-Bildadresse. Leer lassen zum Deaktivieren.")
+                .setView(field)
+                .setPositiveButton("Speichern", (dialog, which) -> {
+                    String value = field.getText().toString().trim();
+                    if (!value.isEmpty()) {
+                        Uri uri = Uri.parse(value);
+                        String scheme = uri.getScheme();
+                        if (!("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))
+                                || uri.getHost() == null) {
+                            Toast.makeText(this, "Bitte eine gültige HTTP(S)-URL eingeben", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                    }
+                    choices.edit().putString("live_wallpaper_url", value).apply();
+                    setResult(RESULT_OK);
+                    refresh();
+                })
+                .setNeutralButton("Theme-Standard", (dialog, which) -> {
+                    choices.edit().remove("live_wallpaper_url").apply();
+                    setResult(RESULT_OK);
+                    refresh();
+                })
+                .setNegativeButton(android.R.string.cancel, null).show();
+    }
+
+    private void selectLiveInterval() {
+        String[] labels = {
+                "10 Sekunden", "15 Sekunden", "20 Sekunden",
+                "30 Sekunden", "45 Sekunden", "1 Minute",
+                "2 Minuten", "5 Minuten", "10 Minuten", "30 Minuten"
+        };
+        int[] seconds = {10, 15, 20, 30, 45, 60, 120, 300, 600, 1800};
+        new AlertDialog.Builder(this).setTitle("Hintergrundwechsel")
+                .setItems(labels, (dialog, which) -> {
+                    choices.edit()
+                            .remove("live_wallpaper_interval")
+                            .putInt("live_wallpaper_interval_seconds", seconds[which])
+                            .apply();
+                    setResult(RESULT_OK);
+                    refresh();
+                })
+                .setNeutralButton("Theme-Standard", (dialog, which) -> {
+                    choices.edit().remove("live_wallpaper_interval")
+                            .remove("live_wallpaper_interval_seconds").apply();
+                    setResult(RESULT_OK);
+                    refresh();
+                })
+                .show();
+    }
+
+    private void selectFadeDuration() {
+        String[] labels = {
+                "500 ms",
+                "1 Sekunde", "2 Sekunden", "3 Sekunden",
+                "4 Sekunden", "5 Sekunden", "6 Sekunden",
+                "7 Sekunden", "8 Sekunden", "9 Sekunden",
+                "10 Sekunden"
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("Hintergrund-Überblendung")
+                .setItems(labels, (dialog, which) -> {
+                    choices.edit()
+                            .putInt("wallpaper_fade_seconds", which)
+                            .apply();
+                    setResult(RESULT_OK);
+                    refresh();
+                })
+                .setNeutralButton("Theme-Standard", (dialog, which) -> {
+                    choices.edit().remove("wallpaper_fade_seconds").apply();
+                    setResult(RESULT_OK);
+                    refresh();
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
     }
 
     private void reverseRow(TextView[] views) {
@@ -232,13 +416,29 @@ public final class LauncherSettingsActivity extends Activity {
                 "none".equals(wallpaperCurrent) ? getString(R.string.wallpaper_none)
                         : wallpaperCurrent != null ? wallpaperCurrent
                         : getString(R.string.wallpaper_theme_default)));
+        Config live = Config.load(this);
+        liveUrlChoice.setText("Hintergrund-URL: " + (live.liveWallpaperUrl.isEmpty() ? "Aus" : live.liveWallpaperUrl));
+        int intervalSeconds = choices.getInt("live_wallpaper_interval_seconds",
+                live.wallpaperRotationMinutes * 60);
+        String intervalLabel = intervalSeconds < 60
+                ? intervalSeconds + " Sekunden"
+                : (intervalSeconds / 60) + (intervalSeconds == 60 ? " Minute" : " Minuten");
+        liveIntervalChoice.setText("Bildwechsel: " + intervalLabel);
+        int fadeSeconds = Math.max(1, Math.min(10,
+                choices.getInt("wallpaper_fade_seconds", 2)));
+        liveFadeChoice.setText("Bildübergang: " + fadeSeconds
+                + (fadeSeconds == 1 ? " Sekunde" : " Sekunden"));
         followThemeChoice.setSelected(!hasOnTvChoices());
     }
 
     private boolean hasOnTvChoices() {
         return choices.contains("columns") || choices.contains(Config.ROWS_BELOW_DOCK_KEY)
                 || choices.contains("animations") || choices.contains("advanced_effects")
-                || choices.contains(Config.WALLPAPER_CHOICE_KEY) || choices.contains(Config.DOCK_OPACITY_KEY);
+                || choices.contains(Config.WALLPAPER_CHOICE_KEY) || choices.contains(Config.DOCK_OPACITY_KEY)
+                || choices.contains("live_wallpaper_url") || choices.contains("live_wallpaper_interval")
+                || choices.contains("live_wallpaper_interval_seconds")
+                || choices.contains("live_wallpaper_disabled")
+                || choices.contains("wallpaper_fade_seconds");
     }
 
     private void open(Intent intent) {

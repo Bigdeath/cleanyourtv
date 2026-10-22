@@ -327,6 +327,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             updateClockVisibility();
         }
     };
+    private final Runnable wallpaperTick = new Runnable() {
+        @Override
+        public void run() {
+            if (wallpaperPlayer != null) wallpaperPlayer.update();
+            handler.postDelayed(this, 1000L);
+        }
+    };
+
     private final Runnable minuteTick = new Runnable() {
         @Override
         public void run() {
@@ -336,7 +344,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             // signal level, so only it needs this minute's binder calls (about 7 ms on the UI thread).
             if (festive) updateWifiLabel();
             sky.update();
-            wallpaperPlayer.update();
             handler.postDelayed(this, MINUTE_MS);
         }
     };
@@ -792,6 +799,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onResume() {
         super.onResume();
+        // Start local button keeper even before the first post-install reboot.
+        try { startForegroundService(new Intent(this, ButtonKeeperService.class)); }
+        catch (Exception ex) { android.util.Log.w("ButtonKeeper", "Start failed", ex); }
         // A festival that started or ended while Home was in the background: rebuild with or without it.
         if (festive != festival.active(LocalDate.now())) {
             recreate();
@@ -837,6 +847,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (showStats) startStats();
         sky.update();
         wallpaperPlayer.start();
+        handler.postDelayed(wallpaperTick, 1000L);
         handler.postDelayed(minuteTick, MINUTE_MS);
         if (festive && diya != null) {
             diya.start();
@@ -1011,6 +1022,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         ambient.animate().cancel();
         heroArt.animate().cancel();
         handler.removeCallbacks(minuteTick);
+        handler.removeCallbacks(wallpaperTick);
         stopStats();
         if (diya != null) diya.stop();
         cancelPendingFocusScroll();
