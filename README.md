@@ -1,3 +1,17 @@
+<!-- EXTENDED-FORK-INTRO -->
+> **Extended fork – Bigdeath/cleanyourtv:** This fork adds dynamic HTTP/HTTPS
+> wallpapers (including Immich Kiosk), configurable crossfades, Google TV remote
+> button mapping, and an optional Cast recovery workaround. **The remote/Cast
+> watchers require separate ADB TCP setup and installation of two scripts**;
+> downloading the APK alone does not activate these features. Tested primarily
+> on a Google TV Streamer running Android 14. The Netflix button may keep its
+> built-in system action. See [fork installation](docs/FORK_INSTALLATION.md),
+> [fork features](docs/FORK_FEATURES.md), and
+> [releases](https://github.com/Bigdeath/cleanyourtv/releases).
+>
+> Original project: [Gathin23/cleanyourtv](https://github.com/Gathin23/cleanyourtv).
+<!-- /EXTENDED-FORK-INTRO -->
+
 <p align="center">
   <a href="https://cleanyour.tv"><img src="https://raw.githubusercontent.com/Gathin23/cleanyourtv/main/docs/banner.png" alt="CleanYourTV. Your TV, minus the ads. Strip the bloatware from any Android TV or Google TV over Wi-Fi and replace the ad-filled home screen with a clean launcher that looks like an Apple TV. No root, no cable, nothing uninstalled, and a one-line restore." width="800"></a>
 </p>
